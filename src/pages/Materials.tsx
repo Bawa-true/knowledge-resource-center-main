@@ -6,26 +6,34 @@ import { ArrowLeft, BookOpen, GraduationCap, Eye, Download as DownloadIcon } fro
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import Header from "@/components/Header";
 import MainSidebar from "@/components/MainSidebar";
+import { useEffect, useState } from "react";
+import { useResources } from "@/lib/useResources";
+import type { Resource } from "@/lib/useResources";
 
-
-
-const materialsByCourse = {
-  "Math": [
-    { id: "m1", title: "Algebra Notes.pdf", thumbnail: "/public/placeholder.svg", description: "Comprehensive algebra notes.", fileUrl: "/public/placeholder.pdf" },
-    { id: "m2", title: "Calculus Workbook.pdf", thumbnail: "/public/placeholder.svg", description: "Practice problems for calculus.", fileUrl: "/public/placeholder.pdf" }
-  ],
-  "Science": [
-    { id: "m3", title: "Physics Lab Manual.pdf", thumbnail: "/public/placeholder.svg", description: "Lab experiments for physics.", fileUrl: "/public/placeholder.pdf" },
-    { id: "m4", title: "Chemistry Formulas.pdf", thumbnail: "/public/placeholder.svg", description: "Key chemistry formulas.", fileUrl: "/public/placeholder.pdf" }
-  ],
-  "History": [
-    { id: "m5", title: "World War II Summary.pdf", thumbnail: "/public/placeholder.svg", description: "Summary of WWII events.", fileUrl: "/public/placeholder.pdf" }
-  ]
-};
 
 const Materials = () => {
   const location = useLocation();
   const navigate = useNavigate();
+  const { fetchMaterialsWithCourseProgram, getFileUrl, loading } = useResources();
+  const [materialsByProgram, setMaterialsByProgram] = useState<Record<string, (Resource & { course_program: string })[]>>({});
+
+  useEffect(() => {
+    const fetchData = async () => {
+      const { data } = await fetchMaterialsWithCourseProgram();
+      if (data) {
+        // Group by course_program
+        const grouped: Record<string, (Resource & { course_program: string })[]> = {};
+        data.forEach((mat: Resource & { course_program: string }) => {
+          const program = mat.course_program || "Other";
+          if (!grouped[program]) grouped[program] = [];
+          grouped[program].push(mat);
+        });
+        setMaterialsByProgram(grouped);
+      }
+    };
+    fetchData();
+  }, [fetchMaterialsWithCourseProgram]);
+
   return (
     <SidebarProvider>
       <div className="min-h-screen flex w-full bg-background">
@@ -36,29 +44,29 @@ const Materials = () => {
           <Header />
           <main className="flex-1 p-8 bg-muted/30">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {Object.entries(materialsByCourse).map(([course, materials]) => (
-                <Card key={course} className="shadow-card">
+              {Object.entries(materialsByProgram).map(([course_program, materials]) => (
+                <Card key={course_program} className="shadow-card">
                   <CardHeader>
-                    <CardTitle className="flex items-center gap-2"><BookOpen className="h-5 w-5 text-primary" />{course}</CardTitle>
+                    <CardTitle className="flex items-center gap-2"><BookOpen className="h-5 w-5 text-primary" />{course_program}</CardTitle>
                   </CardHeader>
                   <CardContent>
                     <div className="grid grid-cols-1 gap-4">
                       {materials.map((mat) => (
                         <Card key={mat.id} className="flex flex-col justify-between p-4">
                           <div className="flex flex-col sm:flex-row items-center gap-4 p-2 w-full">
-                            <img src={mat.thumbnail} alt={mat.title} className="w-16 h-16 object-cover rounded" />
+                            <img src={mat.thumbnail_url || "/public/placeholder.svg"} alt={mat.title} className="w-16 h-16 text-wrap text-ellipsis object-cover rounded" />
                             <div className="flex-1 flex flex-col justify-between h-full w-full">
                               <div>
-                                <div className="font-semibold break-words text-wrap truncate max-w-full overflow-hidden">{mat.title}</div>
-                                <div className="text-sm text-muted-foreground text-wrap break-words max-w-full whitespace-normal overflow-hidden">{mat.description}</div>
+                                <div className="font-semibold break-words break-all overflow-wrap break-word w-full max-w-full whitespace-normal">{mat.title}</div>
+                                <div className="text-sm text-muted-foreground break-words break-all overflow-wrap break-word w-full max-w-full whitespace-normal">{mat.description}</div>
                               </div>
                             </div>
                           </div>
                           <div className="flex gap-2 mt-4 w-full">
-                              <Button size="sm" variant="outline" className="w-1/2 flex items-center justify-center gap-2" onClick={() => window.open(mat.fileUrl, '_blank')}>
+                              <Button size="sm" variant="outline" className="w-1/2 flex items-center justify-center gap-2" onClick={() => window.open(getFileUrl(mat.file_path), '_blank')}>
                                 <Eye className="h-4 w-4" /> View
                               </Button>
-                              <a href={mat.fileUrl} download target="_blank" rel="noopener noreferrer" className="w-1/2">
+                              <a href={getFileUrl(mat.file_path)} download target="_blank" rel="noopener noreferrer" className="w-1/2">
                                 <Button size="sm" variant="secondary" className="w-full flex items-center justify-center gap-2">
                                   <DownloadIcon className="h-4 w-4" /> Download
                                 </Button>

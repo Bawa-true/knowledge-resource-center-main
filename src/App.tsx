@@ -20,7 +20,7 @@ import Register from "./pages/Register";
 import CourseDetails from "./pages/CourseDetails";
 import VideoPlayer from "./pages/VideoPlayer";
 import Announcements from "./pages/Announcements";
-import TestPage from "./pages/TestPage";
+// import TestPage from "./pages/TestPage";
 
 const queryClient = new QueryClient();
 
@@ -50,7 +50,7 @@ const App = () => (
           <Route path="/courses/:courseId" element={<CourseDetails />} />
           <Route path="/videos/:courseId/:videoId" element={<VideoPlayer />} />
           <Route path="/videos/:videoId" element={<VideoPlayer />} />
-          <Route path="/test" element={<TestPage />} />
+
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>

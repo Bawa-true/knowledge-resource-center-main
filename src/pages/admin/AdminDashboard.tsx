@@ -13,18 +13,30 @@ import {
   Megaphone
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { useResources } from "@/lib/useResources";
 
 const AdminDashboard = () => {
   const navigate = useNavigate();
-  
+  const { fetchResourceCount, loading } = useResources();
+  const [resourceCount, setResourceCount] = useState<number | null>(null);
+
+  useEffect(() => {
+    const getCount = async () => {
+      const { count } = await fetchResourceCount();
+      setResourceCount(count);
+    };
+    getCount();
+  }, [fetchResourceCount]);
+
   const stats = [
-    // {
-    //   title: "Total Students",
-    //   value: "1,247",
-    //   icon: Users,
-    //   change: "+12%",
-    //   description: "from last month"
-    // },
+    {
+      title: "Resources Uploaded",
+      value: resourceCount === null ? (loading ? "..." : "-") : resourceCount.toLocaleString(),
+      icon: Upload,
+      change: "",
+      description: "total uploaded"
+    },
     // {
     //   title: "Active Courses",
     //   value: "42",
@@ -32,13 +44,6 @@ const AdminDashboard = () => {
     //   change: "+3",
     //   description: "new this semester"
     // },
-    {
-      title: "Resources Uploaded",
-      value: "3,891",
-      icon: Upload,
-      change: "+156",
-      description: "this week"
-    },
     // {
     //   title: "Course Completion",
     //   value: "87%",

@@ -3,6 +3,7 @@ import { supabase } from './supabase';
 import { useSupabaseAuth } from './useSupabaseAuth';
 
 export interface CourseData {
+  id?: string;
   name: string;
   code: string;
   description?: string;
@@ -269,6 +270,37 @@ export function useCourses() {
     }
   }, [user, createCourse, createResource]);
 
+  // Fetch count of all courses
+  const fetchCourseCount = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    const { count, error } = await supabase
+      .from('courses')
+      .select('*', { count: 'exact', head: true });
+    setLoading(false);
+    if (error) {
+      setError(error.message);
+      return { count: null, error };
+    }
+    return { count, error: null };
+  }, []);
+
+  // Fetch all courses
+  const fetchAllCourses = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    const { data, error } = await supabase
+      .from('courses')
+      .select('*')
+      .order('created_at', { ascending: false });
+    setLoading(false);
+    if (error) {
+      setError(error.message);
+      return { data: null, error };
+    }
+    return { data, error: null };
+  }, []);
+
   return {
     loading,
     error,
@@ -276,5 +308,7 @@ export function useCourses() {
     createResource,
     uploadCourseWithResources,
     checkStorageBucket,
+    fetchCourseCount,
+    fetchAllCourses, // <-- add this to the return object
   };
 } 

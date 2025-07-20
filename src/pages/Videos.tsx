@@ -6,32 +6,33 @@ import { ArrowLeft, Video, GraduationCap, Eye, Download as DownloadIcon } from "
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import Header from "@/components/Header";
 import MainSidebar from "@/components/MainSidebar";
+import { useEffect, useState } from "react";
+import { useResources, Resource } from "@/lib/useResources";
 
-
-
-const videosByCourse = {
-  "Math": [
-    { id: "v1", title: "Algebra Basics.mp4", thumbnail: "/public/placeholder.svg", description: "Intro to algebra basics.", fileUrl: "/public/placeholder.mp4" },
-    { id: "v2", title: "Calculus Explained.mp4", thumbnail: "/public/placeholder.svg", description: "Calculus concepts explained.", fileUrl: "/public/placeholder.mp4" }
-  ],
-  "Science": [
-    { id: "v3", title: "Physics Experiments.mp4", thumbnail: "/public/placeholder.svg", description: "Physics lab experiments.", fileUrl: "/public/placeholder.mp4" },
-    { id: "v4", title: "Chemistry Reactions.mp4", thumbnail: "/public/placeholder.svg", description: "Chemistry in action.", fileUrl: "/public/placeholder.mp4" }
-  ],
-  "History": [
-    { id: "v5", title: "World War II Documentary.mp4", thumbnail: "/public/placeholder.svg", description: "WWII documentary.", fileUrl: "/public/placeholder.mp4" }
-  ]
-};
-
-const courseNameToId = {
-  "Math": "1",
-  "Science": "2",
-  "History": "3"
-};
 
 const Videos = () => {
   const location = useLocation();
   const navigate = useNavigate();
+  const { fetchVideosWithCourseProgram, getFileUrl } = useResources();
+  const [videosByProgram, setVideosByProgram] = useState<Record<string, (Resource & { course_program: string })[]>>({});
+
+  useEffect(() => {
+    const fetchData = async () => {
+      const { data } = await fetchVideosWithCourseProgram();
+      if (data) {
+        // Group by course_program
+        const grouped: Record<string, (Resource & { course_program: string })[]> = {};
+        data.forEach((vid: Resource & { course_program: string }) => {
+          const program = vid.course_program || "Other";
+          if (!grouped[program]) grouped[program] = [];
+          grouped[program].push(vid);
+        });
+        setVideosByProgram(grouped);
+      }
+    };
+    fetchData();
+  }, [fetchVideosWithCourseProgram]);
+
   return (
     <SidebarProvider>
       <div className="min-h-screen flex w-full bg-background">
@@ -42,30 +43,29 @@ const Videos = () => {
           <Header />
           <main className="flex-1 p-8 bg-muted/30">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {Object.entries(videosByCourse).map(([course, videos]) => (
-                <Card key={course} className="shadow-card">
+              {Object.entries(videosByProgram).map(([course_program, videos]) => (
+                <Card key={course_program} className="shadow-card">
                   <CardHeader>
-                    <CardTitle className="flex items-center gap-2"><Video className="h-5 w-5 text-primary" />{course}</CardTitle>
+                    <CardTitle className="flex items-center gap-2"><Video className="h-5 w-5 text-primary" />{course_program}</CardTitle>
                   </CardHeader>
                   <CardContent>
                     <div className="grid grid-cols-1 gap-4">
                       {videos.map((vid) => (
-                        
                         <Card key={vid.id} className="flex flex-col justify-between p-4">
                           <div className="flex flex-col sm:flex-row items-center gap-4 p-2 w-full">
-                            <img src={vid.thumbnail} alt={vid.title} className="w-16 h-16 object-cover rounded" />
+                            <img src={vid.thumbnail_url || "/public/placeholder.svg"} alt={vid.title} className="w-16 h-16 object-cover rounded" />
                             <div className="flex-1 flex flex-col justify-between h-full w-full">
                               <div>
-                                <div className="font-semibold break-words text-wrap truncate max-w-full overflow-hidden">{vid.title}</div>
-                                <div className="text-sm text-muted-foreground break-words max-w-full text-warp whitespace-normal overflow-hidden">{vid.description}</div>
+                                <div className="font-semibold break-words break-all overflow-wrap break-word w-full max-w-full whitespace-normal">{vid.title}</div>
+                                <div className="text-sm text-muted-foreground break-words break-all overflow-wrap break-word w-full max-w-full whitespace-normal">{vid.description}</div>
                               </div>
                             </div>
                           </div>
                           <div className="flex gap-2 mt-4 w-full">
-                            <Button size="sm" variant="outline" className="w-1/2 flex items-center justify-center gap-2" onClick={() => navigate(`/videos/${courseNameToId[course]}/${vid.id}`)}>
+                            <Button size="sm" variant="outline" className="w-1/2 flex items-center justify-center gap-2" onClick={() => navigate(`/videos/${vid.course_id}/${vid.id}`)}>
                               <Eye className="h-4 w-4" /> View
                             </Button>
-                            <a href={vid.fileUrl} download target="_blank" rel="noopener noreferrer" className="w-1/2">
+                            <a href={getFileUrl(vid.file_path)} download target="_blank" rel="noopener noreferrer" className="w-1/2">
                               <Button size="sm" variant="secondary" className="w-full flex items-center justify-center gap-2">
                                 <DownloadIcon className="h-4 w-4" /> Download
                               </Button>

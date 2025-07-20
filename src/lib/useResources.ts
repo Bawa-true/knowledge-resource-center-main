@@ -2,7 +2,7 @@ import { useState, useCallback } from 'react';
 import { supabase } from './supabase';
 
 // Resource interface matching our database schema
-interface Resource {
+export type Resource = {
   id: string;
   title: string;
   description?: string;
@@ -21,7 +21,7 @@ interface Resource {
   is_pinned: boolean;
   created_at: string;
   updated_at: string;
-}
+};
 
 export function useResources() {
   const [resources, setResources] = useState<Resource[]>([]);
@@ -82,8 +82,8 @@ export function useResources() {
     courseId: string,
     resourceType: 'material' | 'video',
     title: string,
+    uploadedBy: string,
     description?: string,
-    uploadedBy: string
   ) => {
     setLoading(true);
     setError(null);
@@ -274,6 +274,105 @@ export function useResources() {
     return { data, error: null };
   }, []);
 
+  // Fetch count of all active resources
+  const fetchResourceCount = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    
+    const { count, error } = await supabase
+      .from('resources')
+      .select('*', { count: 'exact', head: true })
+      .eq('status', 'active');
+
+    setLoading(false);
+    
+    if (error) {
+      setError(error.message);
+      return { count: null, error };
+    }
+    return { count, error: null };
+  }, []);
+
+  // Fetch count of all materials
+  const fetchMaterialCount = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    const { count, error } = await supabase
+      .from('resources')
+      .select('*', { count: 'exact', head: true })
+      .eq('resource_type', 'material')
+      .eq('status', 'active');
+    setLoading(false);
+    if (error) {
+      setError(error.message);
+      return { count: null, error };
+    }
+    return { count, error: null };
+  }, []);
+
+  // Fetch count of all videos
+  const fetchVideoCount = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    const { count, error } = await supabase
+      .from('resources')
+      .select('*', { count: 'exact', head: true })
+      .eq('resource_type', 'video')
+      .eq('status', 'active');
+    setLoading(false);
+    if (error) {
+      setError(error.message);
+      return { count: null, error };
+    }
+    return { count, error: null };
+  }, []);
+
+  // Fetch all materials with course_program from courses table
+  const fetchMaterialsWithCourseProgram = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    const { data, error } = await supabase
+      .from('resources')
+      .select(`*, courses:course_id(course_program)`) // join courses table
+      .eq('resource_type', 'material')
+      .eq('status', 'active')
+      .order('created_at', { ascending: false });
+    setLoading(false);
+    if (error) {
+      setError(error.message);
+      return { data: null, error };
+    }
+    // Map to flatten course_program
+    const mapped = (data || []).map((item: Resource & { courses?: { course_program?: string } }) => ({
+      ...item,
+      course_program: item.courses?.course_program || '',
+    }));
+    return { data: mapped, error: null };
+  }, []);
+
+  // Fetch all videos with course_program from courses table
+  const fetchVideosWithCourseProgram = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    const { data, error } = await supabase
+      .from('resources')
+      .select(`*, courses:course_id(course_program)`) // join courses table
+      .eq('resource_type', 'video')
+      .eq('status', 'active')
+      .order('created_at', { ascending: false });
+    setLoading(false);
+    if (error) {
+      setError(error.message);
+      return { data: null, error };
+    }
+    // Map to flatten course_program
+    const mapped = (data || []).map((item: Resource & { courses?: { course_program?: string } }) => ({
+      ...item,
+      course_program: item.courses?.course_program || '',
+    }));
+    return { data: mapped, error: null };
+  }, []);
+
   return {
     resources,
     loading,
@@ -289,5 +388,10 @@ export function useResources() {
     deleteResource,
     incrementViews,
     getResourcesByUploader,
+    fetchResourceCount,
+    fetchMaterialCount,
+    fetchVideoCount,
+    fetchMaterialsWithCourseProgram,
+    fetchVideosWithCourseProgram, // <-- add this to the return object
   };
 } 

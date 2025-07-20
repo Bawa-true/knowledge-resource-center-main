@@ -208,6 +208,21 @@ export function useUserProfile() {
     return { data, error: null };
   }, []);
 
+  // Fetch count of all users (contributors)
+  const fetchUserCount = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    const { count, error } = await supabase
+      .from('users')
+      .select('*', { count: 'exact', head: true });
+    setLoading(false);
+    if (error) {
+      setError(error.message);
+      return { count: null, error };
+    }
+    return { count, error: null };
+  }, []);
+
   return {
     profile,
     loading,
@@ -219,5 +234,6 @@ export function useUserProfile() {
     getAllUsers,
     getUserProfile,
     updateUserProfile,
+    fetchUserCount, // <-- add this to the return object
   };
 } 

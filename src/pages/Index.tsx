@@ -5,7 +5,10 @@ import { BookOpen, Video, Layers, Upload, GraduationCap, Megaphone, LayoutDashbo
 import { Link } from "react-router-dom";
 import Header from "@/components/Header";
 import MainSidebar from "@/components/MainSidebar";
-
+import { useEffect, useState } from "react";
+import { useResources } from "@/lib/useResources";
+import { useCourses } from "@/lib/useCourses";
+import { useUserProfile } from "@/lib/useUserProfile";
 
 
 const stats = [
@@ -16,6 +19,41 @@ const stats = [
 ];
 
 const Index = () => {
+  const { fetchMaterialCount, fetchVideoCount } = useResources();
+  const { fetchCourseCount } = useCourses();
+  const { fetchUserCount } = useUserProfile();
+
+  const [materialCount, setMaterialCount] = useState<number | null>(null);
+  const [videoCount, setVideoCount] = useState<number | null>(null);
+  const [courseCount, setCourseCount] = useState<number | null>(null);
+  const [userCount, setUserCount] = useState<number | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchCounts = async () => {
+      setLoading(true);
+      const [materials, videos, courses, users] = await Promise.all([
+        fetchMaterialCount(),
+        fetchVideoCount(),
+        fetchCourseCount(),
+        fetchUserCount()
+      ]);
+      setMaterialCount(materials.count);
+      setVideoCount(videos.count);
+      setCourseCount(courses.count);
+      setUserCount(users.count);
+      setLoading(false);
+    };
+    fetchCounts();
+  }, [fetchMaterialCount, fetchVideoCount, fetchCourseCount, fetchUserCount]);
+
+  const stats = [
+    { title: "Materials", value: materialCount === null ? (loading ? "..." : "-") : materialCount.toLocaleString(), icon: BookOpen, color: "text-blue-600" },
+    { title: "Videos", value: videoCount === null ? (loading ? "..." : "-") : videoCount.toLocaleString(), icon: Video, color: "text-green-600" },
+    { title: "Courses", value: courseCount === null ? (loading ? "..." : "-") : courseCount.toLocaleString(), icon: Layers, color: "text-purple-600" },
+    { title: "Contributors", value: userCount === null ? (loading ? "..." : "-") : userCount.toLocaleString(), icon: GraduationCap, color: "text-yellow-600" },
+  ];
+
   return (
     <SidebarProvider>
       <div className="min-h-screen flex w-full bg-background">

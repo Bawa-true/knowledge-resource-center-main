@@ -26,88 +26,29 @@ import {
 import { Link } from "react-router-dom";
 import Header from "@/components/Header";
 import MainSidebar from "@/components/MainSidebar";
+import { useAnnouncements } from "@/lib/useAnnouncements";
 
-
-
-// Mock announcements data
-const mockAnnouncements = [
-  {
-    id: "1",
-    title: "System Maintenance Notice",
-    content: "The platform will be undergoing scheduled maintenance on Saturday, January 20th, from 2:00 AM to 6:00 AM. During this time, users may experience temporary service interruptions. We apologize for any inconvenience.",
-    priority: "high",
-    targetAudience: "all",
-    status: "active",
-    isPinned: true,
-    createdAt: "2024-01-15T10:30:00Z",
-    author: "System Administrator",
-    views: 245
-  },
-  {
-    id: "2",
-    title: "New Course Materials Available",
-    content: "New lecture materials for CS301 (Computer Networks) have been uploaded. Students are encouraged to review the updated course content and download the latest resources.",
-    priority: "normal",
-    targetAudience: "500 level",
-    status: "active",
-    isPinned: false,
-    createdAt: "2024-01-14T14:15:00Z",
-    author: "Dr. Sarah Johnson",
-    views: 189
-  },
-  {
-    id: "3",
-    title: "Faculty Meeting Reminder",
-    content: "Reminder: Faculty meeting scheduled for Friday, January 19th at 3:00 PM in the Conference Room. Agenda includes curriculum updates and upcoming semester planning.",
-    priority: "normal",
-    targetAudience: "400 level",
-    status: "active",
-    isPinned: false,
-    createdAt: "2024-01-13T09:45:00Z",
-    author: "Department Head",
-    views: 67
-  },
-  {
-    id: "4",
-    title: "Emergency: Server Issues Resolved",
-    content: "The server issues that occurred earlier today have been resolved. All services are now running normally. Thank you for your patience.",
-    priority: "urgent",
-    targetAudience: "all",
-    status: "active",
-    isPinned: true,
-    createdAt: "2024-01-12T16:20:00Z",
-    author: "IT Support Team",
-    views: 312
-  },
-  {
-    id: "5",
-    title: "Holiday Schedule Update",
-    content: "The university will be closed for the upcoming holiday weekend. All online services will remain available, but administrative offices will be closed from Friday to Monday.",
-    priority: "low",
-    targetAudience: "all",
-    status: "active",
-    isPinned: false,
-    createdAt: "2024-01-10T11:00:00Z",
-    author: "Administration",
-    views: 156
-  }
-];
 
 const Announcements = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [filterPriority, setFilterPriority] = useState("all");
   const [filterAudience, setFilterAudience] = useState("all");
+  const { announcements, loading, error } = useAnnouncements();
 
   // Filter announcements based on search and filters
-  const filteredAnnouncements = mockAnnouncements.filter(announcement => {
+  const filteredAnnouncements = announcements.filter(announcement => {
     const matchesSearch = announcement.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          announcement.content.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         announcement.author.toLowerCase().includes(searchTerm.toLowerCase());
+                         (announcement.author_name || "").toLowerCase().includes(searchTerm.toLowerCase());
     const matchesPriority = filterPriority === "all" || announcement.priority === filterPriority;
-    const matchesAudience = filterAudience === "all" || announcement.targetAudience === filterAudience;
-    
+    const matchesAudience = filterAudience === "all" || announcement.target_audience === filterAudience;
     return matchesSearch && matchesPriority && matchesAudience;
   });
+
+  // Optionally, show a notification in the header if there are new/pinned announcements
+  // This can be done via context or a prop to Header, e.g.:
+  // const hasNewAnnouncement = announcements.some(a => a.is_pinned || /* your logic for new */);
+  // <Header hasNewAnnouncement={hasNewAnnouncement} />
 
   const getPriorityBadge = (priority: string) => {
     switch (priority) {
@@ -225,25 +166,25 @@ const Announcements = () => {
             {/* Announcements List */}
             <div className="space-y-4">
               {filteredAnnouncements.map((announcement) => (
-                <Card key={announcement.id} className={`shadow-card hover:shadow-hover transition-shadow ${announcement.isPinned ? 'border-primary/50 bg-primary/5' : ''}`}>
+                <Card key={announcement.id} className={`shadow-card hover:shadow-hover transition-shadow ${announcement.is_pinned ? 'border-primary/50 bg-primary/5' : ''}`}>
                   <CardHeader>
                     <div className="flex items-start justify-between">
                       <div className="flex items-start gap-3 flex-1">
-                        {announcement.isPinned && <Pin className="h-4 w-4 text-primary mt-1" />}
+                        {announcement.is_pinned && <Pin className="h-4 w-4 text-primary mt-1" />}
                         <div className="flex-1">
                           <div className="flex items-center gap-2 mb-2">
                             <CardTitle className="text-lg">{announcement.title}</CardTitle>
                             {getPriorityBadge(announcement.priority)}
-                            {getAudienceBadge(announcement.targetAudience)}
+                            {getAudienceBadge(announcement.target_audience)}
                           </div>
                           <div className="flex items-center gap-4 text-sm text-muted-foreground">
                             <div className="flex items-center gap-1">
                               <Users className="h-3 w-3" />
-                              <span>{announcement.author}</span>
+                              <span>{announcement.author_name || announcement.author_id || "Unknown"}</span>
                             </div>
                             <div className="flex items-center gap-1">
                               <Calendar className="h-3 w-3" />
-                              <span>{formatDate(announcement.createdAt)}</span>
+                              <span>{formatDate(announcement.created_at)}</span>
                             </div>
                             <div className="flex items-center gap-1">
                               <Clock className="h-3 w-3" />
