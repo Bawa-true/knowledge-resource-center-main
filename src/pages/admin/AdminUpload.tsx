@@ -7,13 +7,16 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Upload, FileText, Video, Image, Archive, CheckCircle, AlertCircle } from "lucide-react";
+import { Upload, FileText, Video, Image, Archive, CheckCircle, AlertCircle, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useCourses } from "@/lib/useCourses";
+import { validateFile, formatFileSize, ALLOWED_FILE_TYPES } from "@/lib/utils";
 
 const AdminUpload = () => {
   const [formData, setFormData] = useState({
     courseName: "",
     courseCode: "",
+    description: "",
     level: "",
     semester: "",
     courseType: "",
@@ -22,18 +25,67 @@ const AdminUpload = () => {
   });
   const [dragActive, setDragActive] = useState(false);
   const { toast } = useToast();
+  const { uploadCourseWithResources, loading, error } = useCourses();
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setDragActive(false);
     const files = Array.from(e.dataTransfer.files);
-    setFormData(prev => ({ ...prev, files: [...prev.files, ...files] }));
+    
+    // Validate files before adding
+    const validFiles: File[] = [];
+    const invalidFiles: string[] = [];
+    
+    files.forEach(file => {
+      const validation = validateFile(file);
+      if (validation.isValid) {
+        validFiles.push(file);
+      } else {
+        invalidFiles.push(`${file.name}: ${validation.error}`);
+      }
+    });
+    
+    if (invalidFiles.length > 0) {
+      toast({
+        title: "Invalid Files",
+        description: invalidFiles.join(', '),
+        variant: "destructive",
+      });
+    }
+    
+    if (validFiles.length > 0) {
+      setFormData(prev => ({ ...prev, files: [...prev.files, ...validFiles] }));
+    }
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       const files = Array.from(e.target.files);
-      setFormData(prev => ({ ...prev, files: [...prev.files, ...files] }));
+      
+      // Validate files before adding
+      const validFiles: File[] = [];
+      const invalidFiles: string[] = [];
+      
+      files.forEach(file => {
+        const validation = validateFile(file);
+        if (validation.isValid) {
+          validFiles.push(file);
+        } else {
+          invalidFiles.push(`${file.name}: ${validation.error}`);
+        }
+      });
+      
+      if (invalidFiles.length > 0) {
+        toast({
+          title: "Invalid Files",
+          description: invalidFiles.join(', '),
+          variant: "destructive",
+        });
+      }
+      
+      if (validFiles.length > 0) {
+        setFormData(prev => ({ ...prev, files: [...prev.files, ...validFiles] }));
+      }
     }
   };
 
@@ -53,15 +105,9 @@ const AdminUpload = () => {
     return <FileText className="h-4 w-4" />;
   };
 
-  const formatFileSize = (bytes: number) => {
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-  };
 
-  const handleSubmit = (e: React.FormEvent) => {
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     // Validation
@@ -84,33 +130,62 @@ const AdminUpload = () => {
       return;
     }
 
-    // Check file sizes
-    const oversizedFiles = formData.files.filter(file => file.size > 300 * 1024 * 1024);
-    if (oversizedFiles.length > 0) {
+    // Validate all files before submission
+    const invalidFiles = formData.files.map(file => validateFile(file)).filter(validation => !validation.isValid);
+    if (invalidFiles.length > 0) {
       toast({
-        title: "File Size Error",
-        description: "Some files exceed the 300MB limit.",
+        title: "Invalid Files",
+        description: "Some files are invalid. Please remove them and try again.",
         variant: "destructive",
       });
       return;
     }
 
-    // Simulate upload
-    toast({
-      title: "Upload Successful",
-      description: `${formData.files.length} files uploaded successfully for ${formData.courseName}.`,
-    });
+    try {
+      const courseData = {
+        name: formData.courseName,
+        code: formData.courseCode,
+        description: formData.description,
+        level: formData.level,
+        semester: formData.semester,
+        course_type: formData.courseType,
+        course_program: formData.courseProgram,
+      };
 
-    // Reset form
-    setFormData({
-      courseName: "",
-      courseCode: "",
-      level: "",
-      semester: "",
-      courseType: "",
-      courseProgram: "",
-      files: [],
-    });
+      const result = await uploadCourseWithResources(courseData, formData.files);
+
+      if (result.error) {
+        toast({
+          title: "Upload Failed",
+          description: result.error.message,
+          variant: "destructive",
+        });
+        return;
+      }
+
+      toast({
+        title: "Upload Successful",
+        description: `Course "${formData.courseName}" created with ${result.resources.length} resources uploaded successfully.`,
+      });
+
+      // Reset form
+      setFormData({
+        courseName: "",
+        courseCode: "",
+        description: "",
+        level: "",
+        semester: "",
+        courseType: "",
+        courseProgram: "",
+        files: [],
+      });
+    } catch (err) {
+      toast({
+        title: "Upload Failed",
+        description: "An unexpected error occurred during upload.",
+        variant: "destructive",
+      });
+    }
   };
 
   return (
@@ -121,6 +196,15 @@ const AdminUpload = () => {
           Upload course materials, documents, and multimedia resources.
         </p>
       </div>
+
+
+
+      {error && (
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
 
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Course Information */}
@@ -150,6 +234,16 @@ const AdminUpload = () => {
                 value={formData.courseCode}
                 onChange={(e) => setFormData(prev => ({ ...prev, courseCode: e.target.value }))}
                 required
+              />
+            </div>
+            <div className="space-y-2 md:col-span-2">
+              <Label htmlFor="description">Course Description</Label>
+              <Textarea
+                id="description"
+                placeholder="Enter course description..."
+                value={formData.description}
+                onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
+                rows={3}
               />
             </div>
             <div className="space-y-2">
@@ -251,7 +345,7 @@ const AdminUpload = () => {
                 multiple
                 className="hidden"
                 onChange={handleFileSelect}
-                accept=".pdf,.ppt,.pptx,.doc,.docx,.mp4,.avi,.mov,.jpg,.jpeg,.png,.gif,.zip,.rar"
+                accept={ALLOWED_FILE_TYPES.join(',')}
               />
             </div>
 
@@ -270,15 +364,15 @@ const AdminUpload = () => {
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
-                        {file.size > 300 * 1024 * 1024 ? (
-                          <Badge variant="destructive">
-                            <AlertCircle className="h-3 w-3 mr-1" />
-                            Too Large
-                          </Badge>
-                        ) : (
+                        {validateFile(file).isValid ? (
                           <Badge variant="secondary">
                             <CheckCircle className="h-3 w-3 mr-1" />
                             Valid
+                          </Badge>
+                        ) : (
+                          <Badge variant="destructive">
+                            <AlertCircle className="h-3 w-3 mr-1" />
+                            Invalid
                           </Badge>
                         )}
                         <Button
@@ -320,11 +414,18 @@ const AdminUpload = () => {
         </Card>
 
         <div className="flex justify-end gap-4">
-          <Button type="button" variant="outline">
+          <Button type="button" variant="outline" disabled={loading}>
             Save as Draft
           </Button>
-          <Button type="submit" variant="academic" size="lg">
-            Upload Resources
+          <Button type="submit" variant="academic" size="lg" disabled={loading}>
+            {loading ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Uploading...
+              </>
+            ) : (
+              "Upload Resources"
+            )}
           </Button>
         </div>
       </form>

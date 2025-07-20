@@ -10,6 +10,9 @@ export { useUserProfile } from './useUserProfile';
 // Course management
 export { useCourses } from './useCourses';
 
+// My uploads management
+export { useMyUploads } from './useMyUploads';
+
 // Resource management (materials & videos)
 export { useResources } from './useResources';
 

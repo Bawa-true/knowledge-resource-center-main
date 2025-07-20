@@ -1,220 +1,153 @@
-import { useState, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { supabase } from './supabase';
 
-// Announcement interface matching our database schema
-interface Announcement {
+export interface Announcement {
   id: string;
   title: string;
   content: string;
-  priority: 'low' | 'normal' | 'high' | 'urgent';
-  target_audience: 'all' | '500 level' | '400 level' | '300 level';
-  status: 'active' | 'inactive' | 'expired';
+  priority: "low" | "normal" | "high" | "urgent";
+  target_audience: "all" | "500 level" | "400 level" | "300 level";
+  status: "active" | "inactive" | "expired";
   is_pinned: boolean;
   author_id?: string;
+  author_name?: string;
   expiry_date?: string;
   views: number;
   created_at: string;
   updated_at: string;
 }
 
-export function useAnnouncements() {
+export interface CreateAnnouncementData {
+  title: string;
+  content: string;
+  priority: "low" | "normal" | "high" | "urgent";
+  target_audience: "all" | "500 level" | "400 level" | "300 level";
+  expiry_date?: string;
+  is_pinned: boolean;
+}
+
+export const useAnnouncements = () => {
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch all active announcements
-  const fetchAnnouncements = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    
-    const { data, error } = await supabase
-      .from('announcements')
-      .select('*')
-      .eq('status', 'active')
-      .order('is_pinned', { ascending: false })
-      .order('created_at', { ascending: false });
+  const fetchAnnouncements = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      const { data, error } = await supabase
+        .from('announcements')
+        .select(`
+          *,
+          users!announcements_author_id_fkey(
+            full_name,
+            email
+          )
+        `)
+        .order('is_pinned', { ascending: false })
+        .order('created_at', { ascending: false });
 
-    setLoading(false);
-    
-    if (error) {
-      setError(error.message);
-      return { data: null, error };
+      if (error) throw error;
+
+      const announcementsWithAuthor = data?.map(announcement => ({
+        ...announcement,
+        author_name: announcement.users?.full_name || announcement.users?.email || 'Unknown Author'
+      })) || [];
+
+      setAnnouncements(announcementsWithAuthor);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to fetch announcements';
+      setError(errorMessage);
+      console.error('Error fetching announcements:', err);
+    } finally {
+      setLoading(false);
     }
-    
-    setAnnouncements(data || []);
-    return { data, error: null };
-  }, []);
+  };
 
-  // Fetch announcements by target audience
-  const fetchAnnouncementsByAudience = useCallback(async (targetAudience: string) => {
-    setLoading(true);
-    setError(null);
-    
-    const { data, error } = await supabase
-      .from('announcements')
-      .select('*')
-      .eq('target_audience', targetAudience)
-      .eq('status', 'active')
-      .order('is_pinned', { ascending: false })
-      .order('created_at', { ascending: false });
+  const createAnnouncement = async (announcementData: CreateAnnouncementData) => {
+    try {
+      // Get current user
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        throw new Error('User not authenticated');
+      }
 
-    setLoading(false);
-    
-    if (error) {
-      setError(error.message);
-      return { data: null, error };
+      const { data, error } = await supabase
+        .from('announcements')
+        .insert({
+          ...announcementData,
+          author_id: user.id,
+          status: 'active'
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      // Refresh the list
+      await fetchAnnouncements();
+      return data;
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to create announcement';
+      setError(errorMessage);
+      console.error('Error creating announcement:', err);
+      throw err;
     }
-    
-    setAnnouncements(data || []);
-    return { data, error: null };
-  }, []);
+  };
 
-  // Create new announcement
-  const createAnnouncement = useCallback(async (announcementData: Omit<Announcement, 'id' | 'created_at' | 'updated_at' | 'views'>) => {
-    setLoading(true);
-    setError(null);
-    
-    const { data, error } = await supabase
-      .from('announcements')
-      .insert(announcementData)
-      .select()
-      .single();
+  const updateAnnouncement = async (id: string, updates: Partial<Announcement>) => {
+    try {
+      const { error } = await supabase
+        .from('announcements')
+        .update({
+          ...updates,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', id);
 
-    setLoading(false);
-    
-    if (error) {
-      setError(error.message);
-      return { data: null, error };
+      if (error) throw error;
+
+      // Refresh the list
+      await fetchAnnouncements();
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to update announcement';
+      setError(errorMessage);
+      console.error('Error updating announcement:', err);
+      throw err;
     }
-    
-    // Update local state
-    setAnnouncements(prev => [data, ...prev]);
-    return { data, error: null };
-  }, []);
+  };
 
-  // Update announcement
-  const updateAnnouncement = useCallback(async (announcementId: string, updates: Partial<Announcement>) => {
-    setLoading(true);
-    setError(null);
-    
-    const { data, error } = await supabase
-      .from('announcements')
-      .update(updates)
-      .eq('id', announcementId)
-      .select()
-      .single();
+  const deleteAnnouncement = async (id: string) => {
+    try {
+      const { error } = await supabase
+        .from('announcements')
+        .delete()
+        .eq('id', id);
 
-    setLoading(false);
-    
-    if (error) {
-      setError(error.message);
-      return { data: null, error };
+      if (error) throw error;
+
+      // Refresh the list
+      await fetchAnnouncements();
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to delete announcement';
+      setError(errorMessage);
+      console.error('Error deleting announcement:', err);
+      throw err;
     }
-    
-    // Update local state
-    setAnnouncements(prev => prev.map(announcement => 
-      announcement.id === announcementId ? data : announcement
-    ));
-    return { data, error: null };
-  }, []);
+  };
 
-  // Delete announcement (soft delete)
-  const deleteAnnouncement = useCallback(async (announcementId: string) => {
-    setLoading(true);
-    setError(null);
-    
-    const { error } = await supabase
-      .from('announcements')
-      .update({ status: 'inactive' })
-      .eq('id', announcementId);
+  const togglePin = async (id: string, currentPinned: boolean) => {
+    return updateAnnouncement(id, { is_pinned: !currentPinned });
+  };
 
-    setLoading(false);
-    
-    if (error) {
-      setError(error.message);
-      return { error };
-    }
-    
-    // Update local state
-    setAnnouncements(prev => prev.filter(announcement => announcement.id !== announcementId));
-    return { error: null };
-  }, []);
+  const toggleStatus = async (id: string, currentStatus: string) => {
+    const newStatus = currentStatus === "active" ? "inactive" : "active";
+    return updateAnnouncement(id, { status: newStatus as "active" | "inactive" });
+  };
 
-  // Toggle pin status
-  const togglePin = useCallback(async (announcementId: string, isPinned: boolean) => {
-    const { error } = await supabase
-      .from('announcements')
-      .update({ is_pinned: !isPinned })
-      .eq('id', announcementId);
-
-    if (error) {
-      setError(error.message);
-      return { error };
-    }
-    
-    // Update local state
-    setAnnouncements(prev => prev.map(announcement => 
-      announcement.id === announcementId 
-        ? { ...announcement, is_pinned: !isPinned }
-        : announcement
-    ));
-    return { error: null };
-  }, []);
-
-  // Toggle status (active/inactive)
-  const toggleStatus = useCallback(async (announcementId: string, currentStatus: string) => {
-    const newStatus = currentStatus === 'active' ? 'inactive' : 'active';
-    
-    const { error } = await supabase
-      .from('announcements')
-      .update({ status: newStatus })
-      .eq('id', announcementId);
-
-    if (error) {
-      setError(error.message);
-      return { error };
-    }
-    
-    // Update local state
-    setAnnouncements(prev => prev.map(announcement => 
-      announcement.id === announcementId 
-        ? { ...announcement, status: newStatus }
-        : announcement
-    ));
-    return { error: null };
-  }, []);
-
-  // Increment views
-  const incrementViews = useCallback(async (announcementId: string) => {
-    const { error } = await supabase
-      .from('announcements')
-      .update({ views: supabase.rpc('increment', { row_id: announcementId, column_name: 'views' }) })
-      .eq('id', announcementId);
-
-    if (error) {
-      console.error('Failed to increment views:', error);
-    }
-  }, []);
-
-  // Get announcements by author
-  const getAnnouncementsByAuthor = useCallback(async (authorId: string) => {
-    setLoading(true);
-    setError(null);
-    
-    const { data, error } = await supabase
-      .from('announcements')
-      .select('*')
-      .eq('author_id', authorId)
-      .order('created_at', { ascending: false });
-
-    setLoading(false);
-    
-    if (error) {
-      setError(error.message);
-      return { data: null, error };
-    }
-    
-    return { data, error: null };
+  useEffect(() => {
+    fetchAnnouncements();
   }, []);
 
   return {
@@ -222,13 +155,10 @@ export function useAnnouncements() {
     loading,
     error,
     fetchAnnouncements,
-    fetchAnnouncementsByAudience,
     createAnnouncement,
     updateAnnouncement,
     deleteAnnouncement,
     togglePin,
-    toggleStatus,
-    incrementViews,
-    getAnnouncementsByAuthor,
+    toggleStatus
   };
-} 
+}; 

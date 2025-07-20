@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,9 +21,11 @@ import {
   Info,
   Search,
   Filter,
-  Pin
+  Pin,
+  Loader2
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/lib/supabase";
 import {
   Dialog,
   DialogContent,
@@ -45,102 +47,26 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 
-// Debug: Add console log to check if component loads
-console.log("AdminAnnouncements component loaded");
-
 // Type definition for announcement
 interface Announcement {
   id: string;
   title: string;
   content: string;
   priority: "low" | "normal" | "high" | "urgent";
-  targetAudience: "all" | "500 level" | "400 level" | "300 level";
+  target_audience: "all" | "500 level" | "400 level" | "300 level";
   status: "active" | "inactive" | "expired";
-  isPinned: boolean;
-  createdAt: string;
-  updatedAt: string;
-  expiryDate?: string;
-  author: string;
+  is_pinned: boolean;
+  author_id?: string;
+  author_name?: string;
+  expiry_date?: string;
   views: number;
+  created_at: string;
+  updated_at: string;
 }
 
-// Mock data for announcements
-const mockAnnouncements: Announcement[] = [
-  {
-    id: "1",
-    title: "System Maintenance Notice",
-    content: "The platform will be undergoing scheduled maintenance on Saturday, January 20th, from 2:00 AM to 6:00 AM. During this time, users may experience temporary service interruptions. We apologize for any inconvenience.",
-    priority: "high",
-    targetAudience: "all",
-    status: "active",
-    isPinned: true,
-    createdAt: "2024-01-15T10:30:00Z",
-    updatedAt: "2024-01-15T10:30:00Z",
-    expiryDate: "2024-01-21T00:00:00Z",
-    author: "System Administrator",
-    views: 245
-  },
-  {
-    id: "2",
-    title: "New Course Materials Available",
-    content: "New lecture materials for CS301 (Computer Networks) have been uploaded. Students are encouraged to review the updated course content and download the latest resources.",
-    priority: "normal",
-    targetAudience: "500 level",
-    status: "active",
-    isPinned: false,
-    createdAt: "2024-01-14T14:15:00Z",
-    updatedAt: "2024-01-14T14:15:00Z",
-    author: "Dr. Sarah Johnson",
-    views: 189
-  },
-  {
-    id: "3",
-    title: "Faculty Meeting Reminder",
-    content: "Reminder: Faculty meeting scheduled for Friday, January 19th at 3:00 PM in the Conference Room. Agenda includes curriculum updates and upcoming semester planning.",
-    priority: "normal",
-    targetAudience: "400 level",
-    status: "active",
-    isPinned: false,
-    createdAt: "2024-01-13T09:45:00Z",
-    updatedAt: "2024-01-13T09:45:00Z",
-    expiryDate: "2024-01-19T18:00:00Z",
-    author: "Department Head",
-    views: 67
-  },
-  {
-    id: "4",
-    title: "Emergency: Server Issues Resolved",
-    content: "The server issues that occurred earlier today have been resolved. All services are now running normally. Thank you for your patience.",
-    priority: "urgent",
-    targetAudience: "all",
-    status: "active",
-    isPinned: true,
-    createdAt: "2024-01-12T16:20:00Z",
-    updatedAt: "2024-01-12T16:20:00Z",
-    author: "IT Support Team",
-    views: 312
-  },
-  {
-    id: "5",
-    title: "Holiday Schedule Update",
-    content: "The university will be closed for the upcoming holiday weekend. All online services will remain available, but administrative offices will be closed from Friday to Monday.",
-    priority: "low",
-    targetAudience: "all",
-    status: "active",
-    isPinned: false,
-    createdAt: "2024-01-10T11:00:00Z",
-    updatedAt: "2024-01-10T11:00:00Z",
-    expiryDate: "2024-01-25T00:00:00Z",
-    author: "Administration",
-    views: 156
-  }
-];
-
 const AdminAnnouncements = () => {
-  // Debug: Add console log to check if component renders
-  console.log("AdminAnnouncements component rendering");
-  
-  const [announcements, setAnnouncements] = useState<Announcement[]>(mockAnnouncements);
+  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
+  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterPriority, setFilterPriority] = useState("all");
   const [filterAudience, setFilterAudience] = useState("all");
@@ -148,6 +74,7 @@ const AdminAnnouncements = () => {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [editingAnnouncement, setEditingAnnouncement] = useState<Announcement | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const { toast } = useToast();
 
   // Form state for new announcement
@@ -155,25 +82,100 @@ const AdminAnnouncements = () => {
     title: string;
     content: string;
     priority: "low" | "normal" | "high" | "urgent";
-    targetAudience: "all" | "500 level" | "400 level" | "300 level";
-    expiryDate: string;
-    isPinned: boolean;
+    target_audience: "all" | "500 level" | "400 level" | "300 level";
+    expiry_date: string;
+    is_pinned: boolean;
   }>({
     title: "",
     content: "",
     priority: "normal",
-    targetAudience: "all",
-    expiryDate: "",
-    isPinned: false
+    target_audience: "all",
+    expiry_date: "",
+    is_pinned: false
   });
+
+  // Fetch announcements from database
+  const fetchAnnouncements = async () => {
+    try {
+      setLoading(true);
+      
+      // First, fetch all announcements
+      const { data: announcementsData, error: announcementsError } = await supabase
+        .from('announcements')
+        .select('*')
+        .order('is_pinned', { ascending: false })
+        .order('created_at', { ascending: false });
+
+      if (announcementsError) throw announcementsError;
+
+      // Then, fetch all unique author IDs
+      const authorIds = [...new Set(announcementsData?.map(a => a.author_id).filter(Boolean) || [])];
+      
+      // Fetch user data for all authors
+      let usersData: { id: string; name: string; email: string }[] = [];
+      if (authorIds.length > 0) {
+        const { data: users, error: usersError } = await supabase
+          .from('users')
+          .select('id, name, email')
+          .in('id', authorIds);
+        
+        if (usersError) {
+          console.warn('Error fetching users:', usersError);
+        } else {
+          usersData = users || [];
+        }
+      }
+
+      // Combine announcements with user data
+      const announcementsWithAuthor = announcementsData?.map(announcement => {
+        const author = usersData.find(user => user.id === announcement.author_id);
+        return {
+          ...announcement,
+          author_name: author?.name || author?.email || 'Unknown Author'
+        };
+      }) || [];
+
+      setAnnouncements(announcementsWithAuthor);
+    } catch (error) {
+      console.error('Error fetching announcements:', error);
+      
+      // More detailed error handling
+      let errorMessage = 'Unknown error occurred';
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      } else if (typeof error === 'object' && error !== null) {
+        // Handle Supabase errors
+        const supabaseError = error as Record<string, unknown>;
+        if (supabaseError.message) {
+          errorMessage = String(supabaseError.message);
+        } else if (supabaseError.error) {
+          errorMessage = String(supabaseError.error);
+        } else {
+          errorMessage = JSON.stringify(error);
+        }
+      }
+      
+      toast({
+        title: "Error",
+        description: `Failed to load announcements: ${errorMessage}`,
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchAnnouncements();
+  }, []);
 
   // Filter announcements based on search and filters
   const filteredAnnouncements = announcements.filter(announcement => {
     const matchesSearch = announcement.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          announcement.content.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         announcement.author.toLowerCase().includes(searchTerm.toLowerCase());
+                         (announcement.author_name || '').toLowerCase().includes(searchTerm.toLowerCase());
     const matchesPriority = filterPriority === "all" || announcement.priority === filterPriority;
-    const matchesAudience = filterAudience === "all" || announcement.targetAudience === filterAudience;
+    const matchesAudience = filterAudience === "all" || announcement.target_audience === filterAudience;
     const matchesStatus = filterStatus === "all" || announcement.status === filterStatus;
     
     return matchesSearch && matchesPriority && matchesAudience && matchesStatus;
@@ -232,7 +234,7 @@ const AdminAnnouncements = () => {
     });
   };
 
-  const handleCreate = () => {
+  const handleCreate = async () => {
     if (!newAnnouncement.title || !newAnnouncement.content) {
       toast({
         title: "Missing Information",
@@ -242,35 +244,88 @@ const AdminAnnouncements = () => {
       return;
     }
 
-    const announcement: Announcement = {
-      id: Date.now().toString(),
-      title: newAnnouncement.title,
-      content: newAnnouncement.content,
-      priority: newAnnouncement.priority,
-      targetAudience: newAnnouncement.targetAudience,
-      status: "active",
-      isPinned: newAnnouncement.isPinned,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      expiryDate: newAnnouncement.expiryDate || undefined,
-      author: "Current User",
-      views: 0
-    };
+    try {
+      setIsSubmitting(true);
 
-    setAnnouncements(prev => [announcement, ...prev]);
+      // Get current user
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        toast({
+          title: "Authentication Error",
+          description: "Please log in to create announcements.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+            const announcementData = {
+        title: newAnnouncement.title,
+        content: newAnnouncement.content,
+        priority: newAnnouncement.priority,
+        target_audience: newAnnouncement.target_audience,
+        is_pinned: newAnnouncement.is_pinned,
+        author_id: user.id,
+        expiry_date: newAnnouncement.expiry_date || null,
+        status: 'active'
+      };
+
+      console.log('Attempting to create announcement with data:', announcementData);
+
+      const { data, error } = await supabase
+        .from('announcements')
+        .insert(announcementData)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Supabase error details:', error);
+        throw error;
+      }
+
     setIsCreateDialogOpen(false);
     setNewAnnouncement({
       title: "",
       content: "",
       priority: "normal",
-      targetAudience: "all",
-      expiryDate: "",
-      isPinned: false
-    });
+        target_audience: "all",
+        expiry_date: "",
+        is_pinned: false
+      });
+
     toast({
       title: "Announcement Created",
       description: "Your announcement has been published successfully.",
     });
+
+      // Refresh the list
+      await fetchAnnouncements();
+    } catch (error) {
+      console.error('Error creating announcement:', error);
+      
+      // More detailed error handling
+      let errorMessage = 'Unknown error occurred';
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      } else if (typeof error === 'object' && error !== null) {
+        // Handle Supabase errors
+        const supabaseError = error as Record<string, unknown>;
+        if (supabaseError.message) {
+          errorMessage = String(supabaseError.message);
+        } else if (supabaseError.error) {
+          errorMessage = String(supabaseError.error);
+        } else {
+          errorMessage = JSON.stringify(error);
+        }
+      }
+      
+      toast({
+        title: "Error",
+        description: `Failed to create announcement: ${errorMessage}`,
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleEdit = (announcement: Announcement) => {
@@ -278,58 +333,145 @@ const AdminAnnouncements = () => {
     setIsEditDialogOpen(true);
   };
 
-  const handleUpdate = (updatedData: Partial<Announcement>) => {
+  const handleUpdate = async (updatedData: Partial<Announcement>) => {
     if (!editingAnnouncement) return;
 
-    const updatedAnnouncement: Announcement = {
-      ...editingAnnouncement,
-      ...updatedData,
-      updatedAt: new Date().toISOString()
-    };
+    try {
+      setIsSubmitting(true);
 
-    setAnnouncements(prev => prev.map(announcement => 
-      announcement.id === editingAnnouncement.id ? updatedAnnouncement : announcement
-    ));
+      const { error } = await supabase
+        .from('announcements')
+        .update({
+          title: updatedData.title,
+          content: updatedData.content,
+          priority: updatedData.priority,
+          target_audience: updatedData.target_audience,
+          is_pinned: updatedData.is_pinned,
+          expiry_date: updatedData.expiry_date || null,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', editingAnnouncement.id);
+
+      if (error) throw error;
+
     setIsEditDialogOpen(false);
     setEditingAnnouncement(null);
+      
     toast({
       title: "Announcement Updated",
       description: "The announcement has been updated successfully.",
     });
+
+      // Refresh the list
+      await fetchAnnouncements();
+    } catch (error) {
+      console.error('Error updating announcement:', error);
+      toast({
+        title: "Error",
+        description: "Failed to update announcement. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  const handleDelete = (id: string) => {
-    setAnnouncements(prev => prev.filter(announcement => announcement.id !== id));
+  const handleDelete = async (id: string) => {
+    try {
+      const { error } = await supabase
+        .from('announcements')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+
     toast({
       title: "Announcement Deleted",
       description: "The announcement has been deleted successfully.",
     });
+
+      // Refresh the list
+      await fetchAnnouncements();
+    } catch (error) {
+      console.error('Error deleting announcement:', error);
+      toast({
+        title: "Error",
+        description: "Failed to delete announcement. Please try again.",
+        variant: "destructive",
+      });
+    }
   };
 
-  const handleTogglePin = (id: string) => {
-    setAnnouncements(prev => prev.map(announcement => 
-      announcement.id === id 
-        ? { ...announcement, isPinned: !announcement.isPinned, updatedAt: new Date().toISOString() }
-        : announcement
-    ));
+  const handleTogglePin = async (id: string, currentPinned: boolean) => {
+    try {
+      const { error } = await supabase
+        .from('announcements')
+        .update({ 
+          is_pinned: !currentPinned,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', id);
+
+      if (error) throw error;
+
     toast({
       title: "Pin Status Updated",
       description: "The announcement pin status has been updated.",
     });
+
+      // Refresh the list
+      await fetchAnnouncements();
+    } catch (error) {
+      console.error('Error updating pin status:', error);
+      toast({
+        title: "Error",
+        description: "Failed to update pin status. Please try again.",
+        variant: "destructive",
+      });
+    }
   };
 
-  const handleToggleStatus = (id: string, currentStatus: string) => {
+  const handleToggleStatus = async (id: string, currentStatus: string) => {
     const newStatus = currentStatus === "active" ? "inactive" : "active";
-    setAnnouncements(prev => prev.map(announcement => 
-      announcement.id === id 
-        ? { ...announcement, status: newStatus as "active" | "inactive", updatedAt: new Date().toISOString() }
-        : announcement
-    ));
+    
+    try {
+      const { error } = await supabase
+        .from('announcements')
+        .update({ 
+          status: newStatus as "active" | "inactive",
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', id);
+
+      if (error) throw error;
+
     toast({
       title: "Status Updated",
       description: `Announcement status changed to ${newStatus}.`,
     });
+
+      // Refresh the list
+      await fetchAnnouncements();
+    } catch (error) {
+      console.error('Error updating status:', error);
+      toast({
+        title: "Error",
+        description: "Failed to update status. Please try again.",
+        variant: "destructive",
+      });
+    }
   };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
+          <p className="text-muted-foreground">Loading announcements...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -359,6 +501,7 @@ const AdminAnnouncements = () => {
               setAnnouncement={setNewAnnouncement}
               onSubmit={handleCreate}
               onCancel={() => setIsCreateDialogOpen(false)}
+              isSubmitting={isSubmitting}
             />
           </DialogContent>
         </Dialog>
@@ -437,35 +580,35 @@ const AdminAnnouncements = () => {
       {/* Announcements List */}
       <div className="space-y-4">
         {filteredAnnouncements.map((announcement) => (
-          <Card key={announcement.id} className={`shadow-card hover:shadow-hover transition-shadow ${announcement.isPinned ? 'border-primary/50 bg-primary/5' : ''}`}>
+          <Card key={announcement.id} className={`shadow-card hover:shadow-hover transition-shadow ${announcement.is_pinned ? 'border-primary/50 bg-primary/5' : ''}`}>
             <CardHeader>
               <div className="flex items-start justify-between">
                 <div className="flex items-start gap-3 flex-1">
-                  {announcement.isPinned && <Pin className="h-4 w-4 text-primary mt-1" />}
+                  {announcement.is_pinned && <Pin className="h-4 w-4 text-primary mt-1" />}
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-2">
                       <CardTitle className="text-lg">{announcement.title}</CardTitle>
                       {getPriorityBadge(announcement.priority)}
-                      {getAudienceBadge(announcement.targetAudience)}
+                      {getAudienceBadge(announcement.target_audience)}
                       {getStatusBadge(announcement.status)}
                     </div>
                     <div className="flex items-center gap-4 text-sm text-muted-foreground">
                       <div className="flex items-center gap-1">
                         <Users className="h-3 w-3" />
-                        <span>{announcement.author}</span>
+                        <span>{announcement.author_name}</span>
                       </div>
                       <div className="flex items-center gap-1">
                         <Calendar className="h-3 w-3" />
-                        <span>{formatDate(announcement.createdAt)}</span>
+                        <span>{formatDate(announcement.created_at)}</span>
                       </div>
                       <div className="flex items-center gap-1">
                         <Eye className="h-3 w-3" />
                         <span>{announcement.views} views</span>
                       </div>
-                      {announcement.expiryDate && (
+                      {announcement.expiry_date && (
                         <div className="flex items-center gap-1">
                           <Clock className="h-3 w-3" />
-                          <span>Expires: {formatDate(announcement.expiryDate)}</span>
+                          <span>Expires: {formatDate(announcement.expiry_date)}</span>
                         </div>
                       )}
                     </div>
@@ -482,9 +625,9 @@ const AdminAnnouncements = () => {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => handleTogglePin(announcement.id)}
+                  onClick={() => handleTogglePin(announcement.id, announcement.is_pinned)}
                 >
-                  {announcement.isPinned ? (
+                  {announcement.is_pinned ? (
                     <>
                       <Pin className="h-4 w-4 mr-1" />
                       Unpin
@@ -527,6 +670,7 @@ const AdminAnnouncements = () => {
                       announcement={editingAnnouncement} 
                       onUpdate={handleUpdate}
                       onCancel={() => setIsEditDialogOpen(false)}
+                      isSubmitting={isSubmitting}
                     />
                   </DialogContent>
                 </Dialog>
@@ -589,26 +733,28 @@ const CreateAnnouncementForm = ({
   announcement, 
   setAnnouncement, 
   onSubmit, 
-  onCancel 
+  onCancel,
+  isSubmitting
 }: { 
   announcement: {
     title: string;
     content: string;
     priority: "low" | "normal" | "high" | "urgent";
-    targetAudience: "all" | "500 level" | "400 level" | "300 level";
-    expiryDate: string;
-    isPinned: boolean;
+    target_audience: "all" | "500 level" | "400 level" | "300 level";
+    expiry_date: string;
+    is_pinned: boolean;
   }; 
   setAnnouncement: React.Dispatch<React.SetStateAction<{
     title: string;
     content: string;
     priority: "low" | "normal" | "high" | "urgent";
-    targetAudience: "all" | "500 level" | "400 level" | "300 level";
-    expiryDate: string;
-    isPinned: boolean;
+    target_audience: "all" | "500 level" | "400 level" | "300 level";
+    expiry_date: string;
+    is_pinned: boolean;
   }>>; 
   onSubmit: () => void; 
   onCancel: () => void;
+  isSubmitting: boolean;
 }) => {
   return (
     <form onSubmit={(e) => { e.preventDefault(); onSubmit(); }} className="space-y-4">
@@ -620,6 +766,7 @@ const CreateAnnouncementForm = ({
           value={announcement.title}
           onChange={(e) => setAnnouncement({ ...announcement, title: e.target.value })}
           required
+          disabled={isSubmitting}
         />
       </div>
       
@@ -632,13 +779,18 @@ const CreateAnnouncementForm = ({
           onChange={(e) => setAnnouncement({ ...announcement, content: e.target.value })}
           rows={6}
           required
+          disabled={isSubmitting}
         />
       </div>
 
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
           <Label htmlFor="create-priority">Priority</Label>
-          <Select value={announcement.priority} onValueChange={(value) => setAnnouncement({ ...announcement, priority: value as "low" | "normal" | "high" | "urgent" })}>
+          <Select 
+            value={announcement.priority} 
+            onValueChange={(value) => setAnnouncement({ ...announcement, priority: value as "low" | "normal" | "high" | "urgent" })}
+            disabled={isSubmitting}
+          >
             <SelectTrigger>
               <SelectValue />
             </SelectTrigger>
@@ -653,7 +805,11 @@ const CreateAnnouncementForm = ({
         
         <div className="space-y-2">
           <Label htmlFor="create-audience">Target Audience</Label>
-          <Select value={announcement.targetAudience} onValueChange={(value) => setAnnouncement({ ...announcement, targetAudience: value as "all" | "500 level" | "400 level" | "300 level" })}>
+          <Select 
+            value={announcement.target_audience} 
+            onValueChange={(value) => setAnnouncement({ ...announcement, target_audience: value as "all" | "500 level" | "400 level" | "300 level" })}
+            disabled={isSubmitting}
+          >
             <SelectTrigger>
               <SelectValue />
             </SelectTrigger>
@@ -673,8 +829,9 @@ const CreateAnnouncementForm = ({
           <Input
             id="create-expiry"
             type="datetime-local"
-            value={announcement.expiryDate}
-            onChange={(e) => setAnnouncement({ ...announcement, expiryDate: e.target.value })}
+            value={announcement.expiry_date}
+            onChange={(e) => setAnnouncement({ ...announcement, expiry_date: e.target.value })}
+            disabled={isSubmitting}
           />
         </div>
         
@@ -682,9 +839,10 @@ const CreateAnnouncementForm = ({
           <Label className="flex items-center gap-2">
             <input
               type="checkbox"
-              checked={announcement.isPinned}
-              onChange={(e) => setAnnouncement({ ...announcement, isPinned: e.target.checked })}
+              checked={announcement.is_pinned}
+              onChange={(e) => setAnnouncement({ ...announcement, is_pinned: e.target.checked })}
               className="rounded"
+              disabled={isSubmitting}
             />
             Pin to Top
           </Label>
@@ -692,11 +850,18 @@ const CreateAnnouncementForm = ({
       </div>
 
       <DialogFooter>
-        <Button type="button" variant="outline" onClick={onCancel}>
+        <Button type="button" variant="outline" onClick={onCancel} disabled={isSubmitting}>
           Cancel
         </Button>
-        <Button type="submit">
-          Create Announcement
+        <Button type="submit" disabled={isSubmitting}>
+          {isSubmitting ? (
+            <>
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              Creating...
+            </>
+          ) : (
+            'Create Announcement'
+          )}
         </Button>
       </DialogFooter>
     </form>
@@ -707,19 +872,21 @@ const CreateAnnouncementForm = ({
 const EditAnnouncementForm = ({ 
   announcement, 
   onUpdate, 
-  onCancel 
+  onCancel,
+  isSubmitting
 }: { 
   announcement: Announcement | null; 
   onUpdate: (data: Partial<Announcement>) => void; 
   onCancel: () => void;
+  isSubmitting: boolean;
 }) => {
   const [formData, setFormData] = useState({
     title: announcement?.title || "",
     content: announcement?.content || "",
     priority: announcement?.priority || "normal",
-    targetAudience: announcement?.targetAudience || "all",
-    expiryDate: announcement?.expiryDate ? announcement.expiryDate.split('T')[0] + 'T' + announcement.expiryDate.split('T')[1].substring(0, 5) : "",
-    isPinned: announcement?.isPinned || false
+    target_audience: announcement?.target_audience || "all",
+    expiry_date: announcement?.expiry_date ? announcement.expiry_date.split('T')[0] + 'T' + announcement.expiry_date.split('T')[1].substring(0, 5) : "",
+    is_pinned: announcement?.is_pinned || false
   });
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -738,6 +905,7 @@ const EditAnnouncementForm = ({
           value={formData.title}
           onChange={(e) => setFormData({ ...formData, title: e.target.value })}
           required
+          disabled={isSubmitting}
         />
       </div>
       
@@ -749,13 +917,18 @@ const EditAnnouncementForm = ({
           onChange={(e) => setFormData({ ...formData, content: e.target.value })}
           rows={6}
           required
+          disabled={isSubmitting}
         />
       </div>
 
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
           <Label htmlFor="edit-priority">Priority</Label>
-          <Select value={formData.priority} onValueChange={(value) => setFormData({ ...formData, priority: value as "low" | "normal" | "high" | "urgent" })}>
+          <Select 
+            value={formData.priority} 
+            onValueChange={(value) => setFormData({ ...formData, priority: value as "low" | "normal" | "high" | "urgent" })}
+            disabled={isSubmitting}
+          >
             <SelectTrigger>
               <SelectValue />
             </SelectTrigger>
@@ -770,7 +943,11 @@ const EditAnnouncementForm = ({
         
         <div className="space-y-2">
           <Label htmlFor="edit-audience">Target Audience</Label>
-          <Select value={formData.targetAudience} onValueChange={(value) => setFormData({ ...formData, targetAudience: value as "all" | "500 level" | "400 level" | "300 level" })}>
+          <Select 
+            value={formData.target_audience} 
+            onValueChange={(value) => setFormData({ ...formData, target_audience: value as "all" | "500 level" | "400 level" | "300 level" })}
+            disabled={isSubmitting}
+          >
             <SelectTrigger>
               <SelectValue />
             </SelectTrigger>
@@ -790,8 +967,9 @@ const EditAnnouncementForm = ({
           <Input
             id="edit-expiry"
             type="datetime-local"
-            value={formData.expiryDate}
-            onChange={(e) => setFormData({ ...formData, expiryDate: e.target.value })}
+            value={formData.expiry_date}
+            onChange={(e) => setFormData({ ...formData, expiry_date: e.target.value })}
+            disabled={isSubmitting}
           />
         </div>
         
@@ -799,9 +977,10 @@ const EditAnnouncementForm = ({
           <Label className="flex items-center gap-2">
             <input
               type="checkbox"
-              checked={formData.isPinned}
-              onChange={(e) => setFormData({ ...formData, isPinned: e.target.checked })}
+              checked={formData.is_pinned}
+              onChange={(e) => setFormData({ ...formData, is_pinned: e.target.checked })}
               className="rounded"
+              disabled={isSubmitting}
             />
             Pin to Top
           </Label>
@@ -809,11 +988,18 @@ const EditAnnouncementForm = ({
       </div>
 
       <DialogFooter>
-        <Button type="button" variant="outline" onClick={onCancel}>
+        <Button type="button" variant="outline" onClick={onCancel} disabled={isSubmitting}>
           Cancel
         </Button>
-        <Button type="submit">
-          Update Announcement
+        <Button type="submit" disabled={isSubmitting}>
+          {isSubmitting ? (
+            <>
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              Updating...
+            </>
+          ) : (
+            'Update Announcement'
+          )}
         </Button>
       </DialogFooter>
     </form>

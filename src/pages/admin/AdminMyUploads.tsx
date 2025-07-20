@@ -4,7 +4,6 @@ import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -22,18 +21,12 @@ import {
   Filter,
   Calendar,
   FileType,
-  Clock
+  Clock,
+  Loader2
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
+import { useMyUploads, type UploadedResource } from "@/lib/useMyUploads";
+import { supabase } from "@/lib/supabase";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -46,115 +39,51 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 
-// Type definition for upload resource
-interface UploadResource {
-  id: string;
-  title: string;
-  type: "material" | "video";
-  fileType: string;
-  courseName: string;
-  courseCode: string;
-  level: string;
-  semester: string;
-  uploadDate: string;
-  fileSize: string;
-  downloads: number;
-  description: string;
-}
+// Helper function to format file size
+const formatFileSize = (bytes: number): string => {
+  if (bytes === 0) return '0 Bytes';
+  const k = 1024;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+};
 
-// Mock data for uploaded resources
-const mockUploads: UploadResource[] = [
-  {
-    id: "1",
-    title: "Data Structures Lecture Notes",
-    type: "material",
-    fileType: "pdf",
-    courseName: "Data Structures and Algorithms",
-    courseCode: "CS201",
-    level: "200",
-    semester: "first",
-    uploadDate: "2024-01-15",
-    fileSize: "2.5 MB",
-    downloads: 45,
-    description: "Comprehensive lecture notes covering arrays, linked lists, and trees"
-  },
-  {
-    id: "2",
-    title: "Computer Networks Video Lecture",
-    type: "video",
-    fileType: "mp4",
-    courseName: "Computer Networks",
-    courseCode: "CS301",
-    level: "300",
-    semester: "second",
-    uploadDate: "2024-01-10",
-    fileSize: "156 MB",
-    downloads: 23,
-    description: "Video lecture explaining network protocols and architecture"
-  },
-  {
-    id: "3",
-    title: "Operating Systems Lab Manual",
-    type: "material",
-    fileType: "pdf",
-    courseName: "Operating Systems",
-    courseCode: "CS302",
-    level: "300",
-    semester: "first",
-    uploadDate: "2024-01-08",
-    fileSize: "1.8 MB",
-    downloads: 67,
-    description: "Lab exercises and practical assignments for OS course"
-  },
-  {
-    id: "4",
-    title: "Machine Learning Algorithms Demo",
-    type: "video",
-    fileType: "mp4",
-    courseName: "Machine Learning",
-    courseCode: "CS451",
-    level: "400",
-    semester: "second",
-    uploadDate: "2024-01-05",
-    fileSize: "89 MB",
-    downloads: 34,
-    description: "Demonstration of various ML algorithms with examples"
-  },
-  {
-    id: "5",
-    title: "Database Design Patterns",
-    type: "material",
-    fileType: "pptx",
-    courseName: "Database Systems",
-    courseCode: "CS302",
-    level: "300",
-    semester: "first",
-    uploadDate: "2024-01-03",
-    fileSize: "5.2 MB",
-    downloads: 28,
-    description: "PowerPoint presentation on database design patterns"
-  }
-];
+// Helper function to get file extension from MIME type
+const getFileExtension = (mimeType: string): string => {
+  const extensions: { [key: string]: string } = {
+    'application/pdf': 'pdf',
+    'application/msword': 'doc',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
+    'application/vnd.ms-powerpoint': 'ppt',
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'pptx',
+    'video/mp4': 'mp4',
+    'video/avi': 'avi',
+    'video/quicktime': 'mov',
+    'image/jpeg': 'jpg',
+    'image/jpg': 'jpg',
+    'image/png': 'png',
+    'image/gif': 'gif',
+    'application/zip': 'zip',
+    'application/x-rar-compressed': 'rar',
+  };
+  return extensions[mimeType] || 'file';
+};
 
 const AdminMyUploads = () => {
   const navigate = useNavigate();
-  const [uploads, setUploads] = useState(mockUploads);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterType, setFilterType] = useState("all");
-  const [filterLevel, setFilterLevel] = useState("all");
-  const [editingUpload, setEditingUpload] = useState<UploadResource | null>(null);
-  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const { toast } = useToast();
+  const { resources, loading, error, deleteResource } = useMyUploads();
 
   // Filter uploads based on search and filters
-  const filteredUploads = uploads.filter(upload => {
+  const filteredUploads = resources.filter(upload => {
     const matchesSearch = upload.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         upload.courseName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         upload.courseCode.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesType = filterType === "all" || upload.type === filterType;
-    const matchesLevel = filterLevel === "all" || upload.level === filterLevel;
+                         upload.course_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         upload.course_code.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesType = filterType === "all" || upload.resource_type === filterType;
     
-    return matchesSearch && matchesType && matchesLevel;
+    return matchesSearch && matchesType;
   });
 
   const getFileIcon = (fileType: string) => {
@@ -185,46 +114,71 @@ const AdminMyUploads = () => {
     );
   };
 
-  const handleEdit = (upload: UploadResource) => {
-    setEditingUpload(upload);
-    setIsEditDialogOpen(true);
-  };
-
-  const handleUpdate = (updatedData: Partial<UploadResource>) => {
-    setUploads(prev => prev.map(upload => 
-      upload.id === editingUpload.id ? { ...upload, ...updatedData } : upload
-    ));
-    setIsEditDialogOpen(false);
-    setEditingUpload(null);
-    toast({
-      title: "Update Successful",
-      description: "Resource has been updated successfully.",
-    });
-  };
-
-  const handleDelete = (id: string) => {
-    setUploads(prev => prev.filter(upload => upload.id !== id));
+  const handleDelete = async (id: string) => {
+    const success = await deleteResource(id);
+    if (success) {
     toast({
       title: "Delete Successful",
       description: "Resource has been deleted successfully.",
     });
+    } else {
+      toast({
+        title: "Delete Failed",
+        description: "Failed to delete resource. Please try again.",
+        variant: "destructive",
+      });
+    }
   };
 
-  const handleDownload = (upload: UploadResource) => {
-    // Simulate download
+  const handleDownload = (upload: UploadedResource) => {
+    // Generate download URL
+    const { data } = supabase.storage
+      .from('resources')
+      .getPublicUrl(upload.file_path);
+    
+    // Create download link
+    const link = document.createElement('a');
+    link.href = data.publicUrl;
+    link.download = upload.file_name;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
     toast({
       title: "Download Started",
       description: `Downloading ${upload.title}...`,
     });
   };
 
-  const handleView = (upload: UploadResource) => {
-    // Simulate view action
+  const handleView = (upload: UploadedResource) => {
+    if (upload.resource_type === 'video') {
+      // Navigate to video player for videos
+      navigate(`/videos/${upload.id}`);
+    } else {
+      // Open in new tab for other file types
+      const { data } = supabase.storage
+        .from('resources')
+        .getPublicUrl(upload.file_path);
+      
+      window.open(data.publicUrl, '_blank');
+    }
+    
     toast({
       title: "Viewing Resource",
       description: `Opening ${upload.title}...`,
     });
   };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
+          <p className="text-muted-foreground">Loading your uploads...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -241,6 +195,12 @@ const AdminMyUploads = () => {
         </Button>
       </div>
 
+      {error && (
+        <Alert variant="destructive">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
+
       {/* Search and Filters */}
       <Card className="shadow-card">
         <CardHeader>
@@ -254,7 +214,7 @@ const AdminMyUploads = () => {
             <div className="space-y-2">
               <Label htmlFor="search">Search Resources</Label>
               <div className="relative">
-                <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
                 <Input
                   id="search"
                   placeholder="Search by title, course name, or code..."
@@ -268,7 +228,7 @@ const AdminMyUploads = () => {
               <Label htmlFor="type-filter">Resource Type</Label>
               <Select value={filterType} onValueChange={setFilterType}>
                 <SelectTrigger>
-                  <SelectValue />
+                  <SelectValue placeholder="All types" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Types</SelectItem>
@@ -277,141 +237,103 @@ const AdminMyUploads = () => {
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="level-filter">Level</Label>
-              <Select value={filterLevel} onValueChange={setFilterLevel}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Levels</SelectItem>
-                  <SelectItem value="100">100 Level</SelectItem>
-                  <SelectItem value="200">200 Level</SelectItem>
-                  <SelectItem value="300">300 Level</SelectItem>
-                  <SelectItem value="400">400 Level</SelectItem>
-                  <SelectItem value="graduate">Graduate</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Uploads Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filteredUploads.map((upload) => (
-          <Card key={upload.id} className="shadow-card hover:shadow-hover transition-shadow">
+      {/* Uploads List */}
+      <Card className="shadow-card">
             <CardHeader>
-              <div className="flex items-start justify-between">
-                <div className="flex items-center gap-3">
-                  {getFileIcon(upload.fileType)}
-                  <div>
-                    <CardTitle className="text-lg">{upload.title}</CardTitle>
-                    <CardDescription className="text-sm">
-                      {upload.courseName} ({upload.courseCode})
+          <CardTitle>Your Uploads ({filteredUploads.length})</CardTitle>
+          <CardDescription>
+            All resources you have uploaded to the platform
                     </CardDescription>
-                  </div>
-                </div>
-                {getTypeBadge(upload.type)}
-              </div>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <p className="text-sm text-muted-foreground line-clamp-2">
-                {upload.description}
+        <CardContent>
+          {filteredUploads.length === 0 ? (
+            <div className="text-center py-12">
+              <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+              <h3 className="text-lg font-medium text-foreground mb-2">No uploads found</h3>
+              <p className="text-muted-foreground mb-4">
+                {searchTerm || filterType !== "all" 
+                  ? "Try adjusting your search or filters"
+                  : "You haven't uploaded any resources yet"
+                }
               </p>
-              
-              <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
-                <div className="flex items-center gap-1">
+              {!searchTerm && filterType === "all" && (
+                <Button onClick={() => navigate("/admin/upload")}>
+                  <Upload className="h-4 w-4 mr-2" />
+                  Upload Your First Resource
+                </Button>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {filteredUploads.map((upload) => (
+                <div key={upload.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors">
+                  <div className="flex items-center gap-4">
+                    {getFileIcon(getFileExtension(upload.file_type))}
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <h3 className="font-medium text-foreground">{upload.title}</h3>
+                        {getTypeBadge(upload.resource_type)}
+                      </div>
+                      <p className="text-sm text-muted-foreground mb-1">
+                        {upload.course_name} ({upload.course_code})
+                      </p>
+                      <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                        <span className="flex items-center gap-1">
                   <Calendar className="h-3 w-3" />
-                  <span>{upload.uploadDate}</span>
-                </div>
-                <div className="flex items-center gap-1">
+                          {new Date(upload.created_at).toLocaleDateString()}
+                        </span>
+                        <span className="flex items-center gap-1">
                   <FileType className="h-3 w-3" />
-                  <span>{upload.fileSize}</span>
-                </div>
-                <div className="flex items-center gap-1">
+                          {formatFileSize(upload.file_size)}
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <Eye className="h-3 w-3" />
+                          {upload.views} views
+                        </span>
+                        <span className="flex items-center gap-1">
                   <Download className="h-3 w-3" />
-                  <span>{upload.downloads} downloads</span>
+                          {upload.downloads} downloads
+                        </span>
                 </div>
-                <div className="flex items-center gap-1">
-                  <Clock className="h-3 w-3" />
-                  <span>Level {upload.level}</span>
                 </div>
               </div>
-
-              <div className="flex gap-2 pt-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleView(upload)}
-                  className="flex-1"
-                >
-                  <Eye className="h-4 w-4 mr-1" />
-                  View
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleDownload(upload)}
-                  className="flex-1"
-                >
-                  <Download className="h-4 w-4 mr-1" />
-                  Download
-                </Button>
-              </div>
-
-              <div className="flex gap-2">
-                <Dialog open={isEditDialogOpen && editingUpload?.id === upload.id} onOpenChange={setIsEditDialogOpen}>
-                  <DialogTrigger asChild>
+                  <div className="flex items-center gap-2">
                     <Button
-                      variant="outline"
+                      variant="ghost"
                       size="sm"
-                      onClick={() => handleEdit(upload)}
-                      className="flex-1"
+                      onClick={() => handleView(upload)}
                     >
-                      <Edit className="h-4 w-4 mr-1" />
-                      Edit
+                      <Eye className="h-4 w-4" />
                     </Button>
-                  </DialogTrigger>
-                  <DialogContent className="sm:max-w-[425px]">
-                    <DialogHeader>
-                      <DialogTitle>Edit Resource</DialogTitle>
-                      <DialogDescription>
-                        Update the details of your uploaded resource.
-                      </DialogDescription>
-                    </DialogHeader>
-                    <EditUploadForm 
-                      upload={editingUpload} 
-                      onUpdate={handleUpdate}
-                      onCancel={() => setIsEditDialogOpen(false)}
-                    />
-                  </DialogContent>
-                </Dialog>
-
-                <AlertDialog>
-                  <AlertDialogTrigger asChild>
                     <Button
-                      variant="destructive"
+                      variant="ghost"
                       size="sm"
-                      className="flex-1"
+                      onClick={() => handleDownload(upload)}
                     >
-                      <Trash2 className="h-4 w-4 mr-1" />
-                      Delete
+                      <Download className="h-4 w-4" />
+                    </Button>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button variant="ghost" size="sm">
+                          <Trash2 className="h-4 w-4 text-red-500" />
                     </Button>
                   </AlertDialogTrigger>
                   <AlertDialogContent>
                     <AlertDialogHeader>
-                      <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                          <AlertDialogTitle>Delete Resource</AlertDialogTitle>
                       <AlertDialogDescription>
-                        This action cannot be undone. This will permanently delete the resource
-                        "{upload.title}" and remove it from the platform.
+                            Are you sure you want to delete "{upload.title}"? This action cannot be undone.
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
                       <AlertDialogCancel>Cancel</AlertDialogCancel>
                       <AlertDialogAction
                         onClick={() => handleDelete(upload.id)}
-                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                            className="bg-red-500 hover:bg-red-600"
                       >
                         Delete
                       </AlertDialogAction>
@@ -419,136 +341,13 @@ const AdminMyUploads = () => {
                   </AlertDialogContent>
                 </AlertDialog>
               </div>
-            </CardContent>
-          </Card>
+                </div>
         ))}
       </div>
-
-      {filteredUploads.length === 0 && (
-        <Card className="shadow-card">
-          <CardContent className="flex flex-col items-center justify-center py-12">
-            <Upload className="h-12 w-12 text-muted-foreground mb-4" />
-            <h3 className="text-lg font-medium text-foreground mb-2">No uploads found</h3>
-            <p className="text-muted-foreground text-center">
-              {searchTerm || filterType !== "all" || filterLevel !== "all" 
-                ? "Try adjusting your search or filters."
-                : "You haven't uploaded any resources yet. Start by uploading your first resource."
-              }
-            </p>
+          )}
           </CardContent>
         </Card>
-      )}
     </div>
-  );
-};
-
-// Edit Form Component
-const EditUploadForm = ({ upload, onUpdate, onCancel }: { 
-  upload: UploadResource | null; 
-  onUpdate: (data: Partial<UploadResource>) => void; 
-  onCancel: () => void;
-}) => {
-  const [formData, setFormData] = useState({
-    title: upload?.title || "",
-    description: upload?.description || "",
-    courseName: upload?.courseName || "",
-    courseCode: upload?.courseCode || "",
-    level: upload?.level || "",
-    semester: upload?.semester || "",
-  });
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    onUpdate(formData);
-  };
-
-  if (!upload) return null;
-
-  return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="space-y-2">
-        <Label htmlFor="edit-title">Title</Label>
-        <Input
-          id="edit-title"
-          value={formData.title}
-          onChange={(e) => setFormData(prev => ({ ...prev, title: e.target.value }))}
-          required
-        />
-      </div>
-      
-      <div className="space-y-2">
-        <Label htmlFor="edit-description">Description</Label>
-        <Textarea
-          id="edit-description"
-          value={formData.description}
-          onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
-          rows={3}
-        />
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label htmlFor="edit-course-name">Course Name</Label>
-          <Input
-            id="edit-course-name"
-            value={formData.courseName}
-            onChange={(e) => setFormData(prev => ({ ...prev, courseName: e.target.value }))}
-            required
-          />
-        </div>
-        
-        <div className="space-y-2">
-          <Label htmlFor="edit-course-code">Course Code</Label>
-          <Input
-            id="edit-course-code"
-            value={formData.courseCode}
-            onChange={(e) => setFormData(prev => ({ ...prev, courseCode: e.target.value }))}
-            required
-          />
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label htmlFor="edit-level">Level</Label>
-          <Select value={formData.level} onValueChange={(value) => setFormData(prev => ({ ...prev, level: value }))}>
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="100">100 Level</SelectItem>
-              <SelectItem value="200">200 Level</SelectItem>
-              <SelectItem value="300">300 Level</SelectItem>
-              <SelectItem value="400">400 Level</SelectItem>
-              <SelectItem value="graduate">Graduate</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        
-        <div className="space-y-2">
-          <Label htmlFor="edit-semester">Semester</Label>
-          <Select value={formData.semester} onValueChange={(value) => setFormData(prev => ({ ...prev, semester: value }))}>
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="first">First Semester</SelectItem>
-              <SelectItem value="second">Second Semester</SelectItem>
-              <SelectItem value="summer">Summer Session</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-
-      <DialogFooter>
-        <Button type="button" variant="outline" onClick={onCancel}>
-          Cancel
-        </Button>
-        <Button type="submit">
-          Update Resource
-        </Button>
-      </DialogFooter>
-    </form>
   );
 };
 
