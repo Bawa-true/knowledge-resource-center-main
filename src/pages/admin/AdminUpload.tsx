@@ -299,6 +299,13 @@ const AdminUpload = () => {
                   <SelectItem value="control">Control Systems</SelectItem>
                 </SelectContent>
               </Select>
+              <Input
+                id="courseProgramCustom"
+                placeholder="Or enter a custom program..."
+                value={formData.courseProgram}
+                onChange={e => setFormData(prev => ({ ...prev, courseProgram: e.target.value }))}
+                className="mt-2"
+              />
             </div>
           </CardContent>
         </Card>

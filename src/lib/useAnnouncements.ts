@@ -38,22 +38,31 @@ export const useAnnouncements = () => {
       
       const { data, error } = await supabase
         .from('announcements')
-        .select(`
-          *,
-          users!announcements_author_id_fkey(
-            full_name,
-            email
-          )
-        `)
+        .select('*')
         .order('is_pinned', { ascending: false })
         .order('created_at', { ascending: false });
 
+      console.log('Fetched announcements:', data, error); // Debug log
+
       if (error) throw error;
 
-      const announcementsWithAuthor = data?.map(announcement => ({
+      // Get unique author_ids
+      const authorIds = Array.from(new Set((data || []).map(a => a.author_id).filter(Boolean)));
+      let authorsMap = {};
+      if (authorIds.length > 0) {
+        const { data: usersData, error: usersError } = await supabase
+          .from('users')
+          .select('id, name')
+          .in('id', authorIds);
+        if (!usersError && usersData) {
+          authorsMap = Object.fromEntries(usersData.map(u => [u.id, u.name]));
+        }
+      }
+
+      const announcementsWithAuthor = (data || []).map(announcement => ({
         ...announcement,
-        author_name: announcement.users?.full_name || announcement.users?.email || 'Unknown Author'
-      })) || [];
+        author_name: authorsMap[announcement.author_id] || announcement.author_id || 'Unknown Author'
+      }));
 
       setAnnouncements(announcementsWithAuthor);
     } catch (err) {

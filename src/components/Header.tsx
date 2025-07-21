@@ -11,50 +11,55 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Bell, Megaphone, AlertTriangle, CheckCircle, Info } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { useNotifications, Notification as DBNotification } from "@/lib/useNotifications";
+import { supabase } from "@/lib/supabase";
 
 // Type definition for notification
-interface Notification {
-  id: string;
-  title: string;
-  message: string;
-  priority: "urgent" | "high" | "normal" | "low";
-  timestamp: string;
-  read: boolean;
-}
+// interface Notification { ... } // Now imported from useNotifications
 
 // Mock notifications data
-const mockNotifications: Notification[] = [
+const mockNotifications = [
   {
     id: "1",
+    user_id: "mock-user-1",
     title: "System Maintenance Notice",
     message: "Platform maintenance scheduled for Saturday",
-    priority: "high",
-    timestamp: "2 hours ago",
-    read: false
+    priority: "high" as const,
+    type: "system",
+    created_at: "2 hours ago",
+    is_read: false
   },
   {
     id: "2",
+    user_id: "mock-user-2",
     title: "New Course Materials",
     message: "CS301 materials have been updated",
-    priority: "normal",
-    timestamp: "1 day ago",
-    read: false
+    priority: "normal" as const,
+    type: "course",
+    created_at: "1 day ago",
+    is_read: false
   },
   {
     id: "3",
+    user_id: "mock-user-3",
     title: "Server Issues Resolved",
     message: "All services are now running normally",
-    priority: "urgent",
-    timestamp: "3 days ago",
-    read: true
+    priority: "urgent" as const,
+    type: "system",
+    created_at: "3 days ago",
+    is_read: true
   }
 ];
 
 const Header = () => {
   const navigate = useNavigate();
-  const [notifications, setNotifications] = useState(mockNotifications);
-  
-  const unreadCount = notifications.filter(n => !n.read).length;
+  const { notifications, loading, error, fetchNotifications } = useNotifications();
+  const [localNotifications, setLocalNotifications] = useState(mockNotifications);
+
+  // Use real notifications if loaded, else fallback to mock
+  const displayNotifications = !loading && !error && notifications.length > 0 ? notifications : localNotifications;
+
+  const unreadCount = displayNotifications.filter(n => !n.is_read).length;
 
   const getPriorityIcon = (priority: string) => {
     switch (priority) {
@@ -71,18 +76,29 @@ const Header = () => {
     }
   };
 
-  const handleNotificationClick = (notification: Notification) => {
-    // Mark as read
-    setNotifications(prev => 
-      prev.map(n => n.id === notification.id ? { ...n, read: true } : n)
+  const handleNotificationClick = (notification: DBNotification) => {
+    // Mark as read (local only for now)
+    setLocalNotifications(prev =>
+      prev.map(n => n.id === notification.id ? { ...n, is_read: true } : n)
     );
-    
     // Navigate to announcements page
     navigate("/announcements");
   };
 
-  const markAllAsRead = () => {
-    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+  const markAllAsRead = async () => {
+    // Mark all as read in the database
+    if (!loading && !error && notifications.length > 0) {
+      const ids = notifications.filter(n => !n.is_read).map(n => n.id);
+      if (ids.length > 0) {
+        await Promise.all(ids.map(id =>
+          supabase.from('notifications').update({ is_read: true }).eq('id', id)
+        ));
+        // Optionally, re-fetch notifications from the DB
+        fetchNotifications();
+      }
+    }
+    // Mark all as read in local state (for mock fallback)
+    setLocalNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
   };
 
   return (
@@ -90,7 +106,6 @@ const Header = () => {
       <div className="flex items-center gap-4">
         <h1 className="text-xl font-semibold text-foreground">Knowledge Resource Center</h1>
       </div>
-      
       <div className="flex items-center gap-4">
         {/* Notifications */}
         <DropdownMenu>
@@ -123,8 +138,8 @@ const Header = () => {
               )}
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            {notifications.length > 0 ? (
-              notifications.map((notification) => (
+            {displayNotifications.length > 0 ? (
+              displayNotifications.map((notification) => (
                 <DropdownMenuItem 
                   key={notification.id}
                   onClick={() => handleNotificationClick(notification)}
@@ -138,7 +153,7 @@ const Header = () => {
                       <p className="text-sm font-medium text-foreground truncate">
                         {notification.title}
                       </p>
-                      {!notification.read && (
+                      {!notification.is_read && (
                         <div className="w-2 h-2 bg-blue-500 rounded-full flex-shrink-0"></div>
                       )}
                     </div>
@@ -146,7 +161,7 @@ const Header = () => {
                       {notification.message}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      {notification.timestamp}
+                      {notification.created_at}
                     </p>
                   </div>
                 </DropdownMenuItem>

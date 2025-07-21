@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { SidebarProvider } from "@/components/ui/sidebar";
-import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupLabel, SidebarGroupContent, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarHeader } from "@/components/ui/sidebar";
+import { Sidebar } from "@/components/ui/sidebar";
+import MainSidebar from "@/components/MainSidebar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ArrowLeft, Video, GraduationCap, Eye, Download as DownloadIcon, Loader2 } from "lucide-react";
 import { Link, useLocation, useParams, useNavigate } from "react-router-dom";
@@ -215,38 +216,13 @@ const VideoPlayer = () => {
 
   return (
     <SidebarProvider>
-      <div className="min-h-screen flex bg-background">
-        <Sidebar className="w-64 flex-shrink-0">
-          <SidebarHeader className="border-b border-sidebar-border p-4">
-            <div className="flex items-center gap-2">
-              <GraduationCap className="h-8 w-8 text-sidebar-foreground" />
-              <div>
-                <h2 className="text-lg font-semibold text-sidebar-foreground">Knowledge Center</h2>
-                <p className="text-sm text-sidebar-foreground/70">Video Player</p>
-              </div>
-            </div>
-          </SidebarHeader>
-          <SidebarContent>
-            <SidebarGroup>
-              <SidebarGroupLabel>Navigation</SidebarGroupLabel>
-              <SidebarGroupContent>
-                <SidebarMenu>
-                  {navItems.map((item) => (
-                    <SidebarMenuItem key={item.title}>
-                      <SidebarMenuButton asChild>
-                        <Link to={item.url} className={`flex items-center gap-2 px-2 py-2 rounded hover:bg-sidebar-accent hover:text-sidebar-accent-foreground ${location.pathname === item.url ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium' : ''}`}>
-                          <item.icon className="h-4 w-4 text-sidebar-foreground" />
-                          <span>{item.title}</span>
-                        </Link>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  ))}
-                </SidebarMenu>
-              </SidebarGroupContent>
-            </SidebarGroup>
-          </SidebarContent>
+      <div className="min-h-screen flex w-full bg-background">
+        {/* Sidebar */}
+        <Sidebar className="w-64">
+          <MainSidebar />
         </Sidebar>
-        <div className="flex-1 flex flex-col min-w-0">
+        {/* Main Content */}
+        <div className="flex-1 flex flex-col min-h-0 min-w-0 overflow-auto">
           <header className="h-16 border-b border-border flex items-center px-4 sm:px-6 shadow-sm bg-white sm:bg-card relative">
             <button onClick={() => navigate(-1)} className="mr-2 sm:mr-4 p-2 rounded hover:bg-muted focus:outline-none focus:ring-2 focus:ring-primary">
               <ArrowLeft className="h-5 w-5 text-primary" />

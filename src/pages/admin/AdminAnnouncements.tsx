@@ -282,6 +282,20 @@ const AdminAnnouncements = () => {
         throw error;
       }
 
+      // Add notification for the new announcement
+      if (data && data.id) {
+        const notification = {
+          user_id: null, // null or a broadcast user, or handle per-user if needed
+          title: `New Announcement: ${data.title}`,
+          message: data.content,
+          priority: data.priority,
+          type: 'announcement',
+          related_id: data.id,
+          is_read: false
+        };
+        await supabase.from('notifications').insert(notification);
+      }
+
     setIsCreateDialogOpen(false);
     setNewAnnouncement({
       title: "",

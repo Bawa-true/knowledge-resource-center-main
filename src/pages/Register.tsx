@@ -7,14 +7,19 @@ import { Label } from "@/components/ui/label";
 import { useSupabaseAuth } from "@/lib";
 import { useUserProfile } from "@/lib";
 
-const roles = ["Lecturer", "Classrep", "Lab Technician", "Admin"];
+const roles = [
+  { value: "Lecturer", label: "Lecturer" },
+  { value: "Classrep", label: "Classrep" },
+  { value: "Lab Technician", label: "Lab Technician" },
+  { value: "admin", label: "Admin" }
+];
 
 const Register = () => {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [role, setRole] = useState(roles[0]);
+  const [role, setRole] = useState(roles[0].value);
   const [staffPin, setStaffPin] = useState("");
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState("");
@@ -86,7 +91,7 @@ const Register = () => {
                 <div className="space-y-2">
                   <Label htmlFor="role">Role</Label>
                   <select id="role" value={role} onChange={e => setRole(e.target.value)} className="w-full border rounded px-3 py-2">
-                    {roles.map(r => <option key={r} value={r}>{r}</option>)}
+                    {roles.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
                   </select>
                 </div>
                 <div className="space-y-2">
