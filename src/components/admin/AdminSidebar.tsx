@@ -78,7 +78,7 @@ export function AdminSidebar() {
           <GraduationCap className="h-8 w-8 text-sidebar-foreground" />
           {!isCollapsed && (
             <div>
-              <h2 className="text-lg font-semibold text-sidebar-foreground">EduTech</h2>
+              <h2 className="text-lg font-semibold text-sidebar-foreground">E-Access</h2>
               <p className="text-sm text-sidebar-foreground/70">Admin Panel</p>
             </div>
           )}

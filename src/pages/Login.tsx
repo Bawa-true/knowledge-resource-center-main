@@ -39,7 +39,7 @@ const Login = () => {
           <div className="flex items-center justify-center mb-4">
             <GraduationCap className="h-12 w-12 text-white" />
           </div>
-          <h1 className="text-3xl font-bold text-white">EduTech Platform</h1>
+          <h1 className="text-3xl font-bold text-white">E-Access</h1>
           <p className="text-primary-foreground/80">Computer Engineering Education</p>
         </div>
 

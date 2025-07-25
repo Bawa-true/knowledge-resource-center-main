@@ -20,7 +20,7 @@ const MainSidebar = () => {
         <div className="flex items-center gap-2">
           <GraduationCap className="h-8 w-8 text-sidebar-foreground" />
           <div>
-            <h2 className="text-lg font-semibold text-sidebar-foreground">Knowledge Center</h2>
+            <h2 className="text-lg font-semibold text-sidebar-foreground">E-Access</h2>
             <p className="text-sm text-sidebar-foreground/70">Main Dashboard</p>
           </div>
         </div>
