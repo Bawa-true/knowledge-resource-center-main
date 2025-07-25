@@ -68,7 +68,7 @@ const Register = () => {
           <CardContent>
             {success ? (
               <div className="text-center text-green-600 font-semibold py-8">
-                Registration successful! Redirecting to login...
+                Registration successful! confirm in your email Redirecting to login...
               </div>
             ) : (
               <form className="space-y-4" onSubmit={handleSubmit}>
